@@ -1,0 +1,23 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: 1-deployment
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: node-firefox-debug
+    spec:
+      containers:
+      - name: node-firefox-debug
+        image: 238764668013.dkr.ecr.us-west-1.amazonaws.com/node-firefox-debug
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+

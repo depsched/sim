@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+
+def parse_pop_layer():
+    '''
+    Input: ecr_image_list.csv, image_stats.csv
+    Output: ecr_image_list_stats.csv
+    '''
+    open("ecr_image_list_stats.csv", 'w').close()
+
+    image_stat_map = dict()
+    with open("image_stats.csv") as f:
+        for line in f.readlines():
+            line = line.split(',')
+            image_stat_map[line[0]] = (line[1],line[2],line[3],line[4])
+    
+    with open("ecr_image_list.csv", 'r') as f:
+        with open("ecr_image_list_stats.csv", 'a') as g:
+            for line in f.readlines():
+                image = line.split('/')[1]
+
+def parse_share_layer():
+    lib = set()
+    min25_image_set = set() 
+    min10_image_set = set()
+    min5_image_set = set()
+    image_size_map = dict()
+
+    '''
+    Assume layer_stats_filtered.csv is sorted by popularity
+    '''
+    with open("layer_stats_filtered.csv", 'r') as f:
+        counter = 0
+        for line in f.readlines():
+            line = line.split(',')
+            for l in line[5].split('|'):
+                lib.add(l.rstrip())
+
+            min25_image_set.add(line[5].split('|')[0])
+            if counter < 10:
+                min10_image_set.add(line[5].split('|')[0])
+            if counter < 5:
+                min5_image_set.add(line[5].split('|')[0])
+            counter += 1
+
+    print lib, len(lib), min25_image_set, len(min25_image_set)
+
+    with open("max_image_stat.csv", 'r') as f:
+        for line in f.readlines():
+            line = line.split(',')
+            image_size_map['library/' + line[0]] = line[4].rstrip()
+            
+    with open("mid_image_set.csv", 'w') as f:
+        for l in lib:
+            f.write(l+'\n')
+
+    with open("min25_image_set.csv", 'w') as f:
+        total_size = 0 
+        for i in min25_image_set:
+            total_size += int(image_size_map[i])
+            f.write(i+','+image_size_map[i]+'\n')
+        print "min25: " + str(total_size)
+
+    with open("min10_image_set.csv", 'w') as f:
+        total_size = 0 
+        for i in min10_image_set:
+            total_size += int(image_size_map[i])
+            f.write(i+','+image_size_map[i]+'\n')
+        print "min10: " + str(total_size)
+
+    with open("min5_image_set.csv", 'w') as f:
+        total_size = 0 
+        for i in min5_image_set:
+            total_size += int(image_size_map[i])
+            f.write(i+','+image_size_map[i]+'\n')
+        print "min5: " + str(total_size)
+
+if __name__ == "__main__":
+   parse_share_layer() 

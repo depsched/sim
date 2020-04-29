@@ -1,0 +1,57 @@
+language: python
+sudo: required
+dist: trusty
+python:
+- '2.7'
+- '3.5'
+- '3.6'
+install:
+- if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh
+  -O miniconda.sh; export RANDOM_ID=`python -c "from random import choice; print ''.join([choice('1234567890')
+  for i in range(6)])"`; else wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+  -O miniconda.sh; export RANDOM_ID=`python -c "from random import choice; print(''.join([choice('1234567890')
+  for i in range(6)]))"`; fi
+- bash miniconda.sh -b -p $HOME/miniconda
+- export PATH="$HOME/miniconda/bin:$PATH"
+- printenv TRAVIS_PULL_REQUEST
+- printenv TRAVIS_PULL_REQUEST_BRANCH
+- printenv TRAVIS_COMMIT
+- printenv TRAVIS_BRANCH
+- printenv
+- hash -r
+- conda config --set always_yes yes --set changeps1 no
+- conda update -q conda
+- conda info -a
+- conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy pytest cython
+  nose boto3 PyYAML Click pytest
+- source activate test-environment
+- pip install glob2
+- pip install git+https://github.com/ericmjonas/pywren.git
+before_script:
+- export BUILD_GUID=`echo $TRAVIS_JOB_NUMBER | sed 's/\./_/g'`_$RANDOM_ID
+- echo CLEAN BUILD ID IS $BUILD_GUID
+- export BUCKET_NAME=`echo pywren_travis_$BUILD_GUID | sed 's/_/-/g'`
+- echo $BUCKET_NAME
+- pywren test_config
+- pywren create_config --lambda_role=pywren_travis_test_$BUILD_GUID --function_name=pywren_travis_$BUILD_GUID
+  --bucket_name=$BUCKET_NAME --sqs_queue=pywren_travis_$BUILD_GUID --standalone_name=pywren_travis_$BUILD_GUID
+  --pythonver=$TRAVIS_PYTHON_VERSION
+- cat ~/.pywren_config
+- pywren create_role
+- pywren create_bucket
+- sleep 10
+- pywren deploy_lambda
+script:
+- python testscript.py
+after_script:
+- pywren delete_bucket
+- pywren delete_lambda
+- pywren delete_role
+after_failure:
+- pywren delete_bucket
+- pywren delete_lambda
+- pywren delete_role
+env:
+  global:
+    - secure: "Tr7lqnZzzogdr6TQm1NiskUYV2+AjQf1xXSnRQFRj032clGIC3L2ZrDlMRA6Ckd4uy+e0jSpd2yrE1AwZP92PeESNWa7VZLBHBfTgppAwWr+3DuEE4svtVQxKP8c6JfWFax0EYDT0Vu9Fg/E9wyxe6srYs4gmUtFAgiUPrmPJNu9G+aWRlyWuxVu0Z3DE/LerO+875jx3XJbBjCIto8s78W6rQcCSYzRa2O4PuGi7JJNA8mU89bxIzbRjWIq9MgjiM4GWZuZ/3M6TSgFzNZjjczxNZI8dH5gv9Q6f8dzHiQV2SaoITUO70LnnKWE1vgXqIMxwnBZqIdiqVALbQsLwzWcdNG1pCZEwmMdm58fjI2uN5U6fpgYa62aGdZgI5i1nP0fe+UtLdiW72MqOlSBb0DBi7/MJBBIjcDHSrwtypV4f9yQSkc93228skoO/LQ9vU2yANi7Bwany9QIN2sHTtNNrAZ710RLRHC+OHI/jTg3/5vKkkZtTqXFDhKhXfujO1infhIhePTQdohh7PvqbOmHR+tuepzY/3UAR5Jj906STjMmD6jOqhYVLYIO3V7Ts1LbVdhvjC6X0bChW5E3Xar7n+lrsD7tYMN+is64hL3saIjQGVCwlN3rASeCs37yrpM8dr+lLCbHQDtY1lecU1PfMtPbxPUB05W7y39uO5g="
+    - secure: "KYwsBwWQ6Cd5/5syTuzAR4/DsZFG7dsarMbKXvRnLHkmI/EBtZooprXJEbwxQEG7xCnKRH58Ongqs4HJNTMWo/R5mS/F7u+mDjTQ2GUf8oulq2VbJrFe5yEdgFeNIOP93oXB4Zk4snM4rQ/uqjAWIfzbw5AtM3dStajSVIP/EbE+TcSDaTxLtCBYmU09lEgMoa2saVyLC2rZOtG8aK1b+tgMhBW1pmOzVwWQ5XglekYaZNRoF/a6hprkP6UaME94/AZS4qox9IWPN9sewP5+/DjvwnpgijgUaeMWF/+uItULOIPESlqnrjmhbNWX6X7aaO8AAelsKx7maF7CoBZoYYfHLuQqTug4zFJp+s/9qNy49PeVXWewP6euWir0EwSH5rtGonf9TrrSkd0QGEplHuoi5+SK7zq6Q8+kGNV45G2bv0XZCtEynPE8SGU/gL/1xKDlpVqmvk6JQVhYgxWgXpE1hYlKjIed83yLRcJxp/GvC/7esWM4wdjMObx+W7hu7Tx9DJT3SbnNzFlGjvNnZG7XJdR89HrTUOWiB2KZjPW8KvVkUFZ6g6qPzuDk5jIhXUHroyTh/DteKn6iuq0abs1Koen+0IdjnYypvDPUO3IGi94ABGnW/D+3OcOJJ/SIo32nGzF+7/ubntLpNNNKvXbgk/MIqJZWcliyMoDsV4o="

@@ -1,0 +1,10 @@
+__tool__/
+__cred__/
+__pycache__/
+__bak__/
+__plot__/
+__result__/
+__data__/
+.idea/
+*.pyc
+.tmp

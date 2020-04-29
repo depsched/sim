@@ -1,0 +1,208 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import sys
+import subprocess
+import os
+import os.path
+import re
+import argparse
+import time
+
+LIST_FILE = './runtime_env_ecr.csv'
+OUT_FILE = './pull_result.csv'
+OUT_FILE_BASE = './pull_result_base.csv'
+OUT_FILE_CACHE = './pull_result_cache.csv'
+PULL_LIST_CMD = './dockerhub_list grab'
+CMD_RM_AUFS_DIFF = 'rm -rf /var/lib/docker/overlay/*-removing || true' # change to /aufs/diff if using aufs
+IMAGE_BLACK_LIST = set(['docker-dev', 'notary'])
+DOCKER_CMD_RMI = 'docker rmi $(docker images -aq) || true'
+DOCKER_CMD_PULL = 'docker pull'
+
+def run_test():
+    with open(LIST_FILE, 'r') as f:
+        image_list = [line.rstrip() for line in f.readlines()]
+    open(OUT_FILE, 'w').close()
+
+    base_result = metric_per_pull(image_list, False)
+    cache_result = metric_per_pull(image_list)
+    cache_result = metric_per_pull(image_list)
+
+    clear_image_cache()
+
+    dump_result(base_result, OUT_FILE_BASE)
+    dump_result(cache_result, OUT_FILE_CACHE)
+    dump_result(compare(base_result, cache_result), OUT_FILE)
+
+def dump_result(metric_list, out_file):
+    with open(out_file, 'w') as f:
+        for line in metric_list:
+            f.write(','.join([str(x) for x in line]) + '\n')
+
+def compare(ra, rb):
+    """
+    Compare two metric lists, compute aggregate of each metric.
+
+    Return:
+        A metric list containing aggregates.
+    """
+    
+    metric_list = []
+    for i in range(min(len(ra),len(rb))):
+        assert ra[i][0] == rb[i][0]
+        image_name = ra[i][0]
+
+        # compare latency, ra - rb
+        diff_latency = ra[i][1] - rb[i][1]
+
+        # compare bw, ra - rb
+        diff_bw = 0
+
+        # compare num of cached layer hit, rb - ra
+        diff_num_hit = rb[i][3] - ra[i][3] 
+
+        # pass the num of layer
+        num_layer = rb[i][4]
+
+        metric_list.append((image_name, diff_latency, diff_bw, diff_num_hit, num_layer))
+
+    return metric_list 
+    
+def metric_per_pull(image_list, cache=True):
+    """
+    Pull a docker image, collect metrics (image_name, latency, bw, #_hit, #_layer).
+    
+    If cache is set false, remove all image layers before next pulling.
+
+    Return:
+        A list of metric tuples
+    """
+
+    metric_list = []
+    for img in image_list:
+        if check_black_list(img): continue
+
+        # latency measurement
+        start_time = time.time()
+        out = run_cmd_out(DOCKER_CMD_PULL + ' ' + img)
+        latency = time.time() - start_time
+        
+        # bandwidth
+        bw = 0 
+
+        # number of cached layer hit
+        num_hit = get_num_hit(out) if cache else 0
+
+        # number of layers
+        num_layer = get_num_pull_layer(out) + num_hit
+
+        print('\n' + img + ':\n' + out)
+        if not cache:
+            clear_image_cache()
+            clear_aufs_orphan()
+
+        metric_list.append((img, latency, bw, num_hit, num_layer)) 
+
+    return metric_list 
+
+def get_match_count(string, sub):
+    count = start = 0
+    while True:
+        start = string.find(sub, start) + 1
+        if start > 0:
+            count += 1
+        else:
+            return count
+
+def get_num_hit(out, keyword='Already'):
+    return get_match_count(out, keyword)
+
+def get_num_pull_layer(out, keyword='Pulling'):
+    return get_match_count(out, keyword)
+        
+def clear_image_cache():
+    run_cmd(DOCKER_CMD_RMI)
+
+def clear_aufs_orphan():
+    run_cmd(CMD_RM_AUFS_DIFF)
+            
+def pull_list(n=2):
+    run_cmd(PULL_LIST_CMD + ' ' + str(n) + ' > ' + LIST_FILE)
+
+def check_black_list(img):
+    return img in IMAGE_BLACK_LIST;
+    
+def run_cmd_out(cmd):
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+
+    out, _ = proc.communicate()
+
+    if proc.returncode:
+        print('Error occured running host command: %s' % cmd, file=sys.stderr)
+        sys.exit(proc.returncode)
+
+    return out
+    
+def run_cmd(cmd):
+    proc = subprocess.Popen(cmd, shell=True)
+
+    proc.communicate()
+
+    if proc.returncode:
+        print('Error occured running host command: %s' % cmd, file=sys.stderr)
+        sys.exit(proc.returncode)
+
+def shell_quote(cmd):
+    return "'" + cmd.replace("'", "'\\''") + "'"
+
+def print_usage(parser):
+    parser.print_help(file=sys.stderr)
+    sys.exit(2)
+
+def check_root():
+    euid = os.geteuid()
+    if euid != 0:
+        print('--> Please run the script as root...')
+        exit()
+
+def arg_test():
+    print('halo, arg arg.')
+
+def main():
+    check_root()
+
+    parser = argparse.ArgumentParser(description='Latency test for container cold vs. warm start')
+    cmds = {
+            'run': run_test,
+            'pull_list': lambda: pull_list(args.numpages),
+            'argtest': arg_test,
+            'help': lambda: print_usage(parser),
+            }
+
+    for name in cmds.keys():
+        if '_' in name:
+            cmds[name.replace('_','-')] = cmds[name]
+
+    cmdlist = sorted(cmds.keys())
+    
+    parser.add_argument(
+            'action',
+            metavar='action',
+            nargs='?',
+            default='argtest',
+            choices=cmdlist,
+            help='Action is one of ' + ', '.join(cmdlist))
+
+    parser.add_argument('-v', '--verbose', action='store_true',
+                            help='pass verbose flag to build inside container')
+
+    parser.add_argument('--numpages', nargs='?', const=2, type=int, help='number of pages need to grab on dockerhub')
+
+    args = parser.parse_args()
+
+    cmds[args.action]()
+
+if __name__ == '__main__':
+    main()
+    print('Done')

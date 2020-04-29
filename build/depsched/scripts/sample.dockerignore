@@ -1,0 +1,3 @@
+*
+!Dockerfile
+!_output/local/go/bin/kube-scheduler

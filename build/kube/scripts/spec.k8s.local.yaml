@@ -1,0 +1,134 @@
+apiVersion: kops/v1alpha2
+kind: Cluster
+metadata:
+  creationTimestamp: 2018-04-22T23:01:46Z
+  name: 4f56f.k8s.local
+spec:
+  api:
+    loadBalancer:
+      type: Public
+  docker:
+      version: 18.06.1
+      storage: overlay2
+  authorization:
+    rbac: {}
+  channel: stable
+  cloudProvider: aws
+  configBase: s3://4f56f-state-store/4f56f.k8s.local # TODO: generate this cluster config from the core config file (e.g., env.exp)
+  etcdClusters:
+  - etcdMembers:
+    - instanceGroup: master-us-west-2
+      name: a
+    name: main
+  - etcdMembers:
+    - instanceGroup: master-us-west-2
+      name: a
+    name: events
+  iam:
+    allowContainerRegistry: true
+    legacy: false
+  kubernetesApiAccess:
+  - 0.0.0.0/0
+  kubernetesVersion: https://foo-binary-store.s3.amazonaws.com/kubernetes/dev/v1.9.0/
+#  kubernetesVersion: v1.11.0
+  kubeAPIServer:
+    runtimeConfig:
+        autoscaling/v2beta1: "true"
+    admissionControl:
+    - NamespaceLifecycle
+    - LimitRanger
+    - ServiceAccount
+    - PersistentVolumeLabel
+    - DefaultStorageClass
+    - DefaultTolerationSeconds
+    - MutatingAdmissionWebhook
+    - ValidatingAdmissionWebhook
+    - ResourceQuota
+    - NodeRestriction
+    - Priority
+#  kubelet:
+#    enableCustomMetrics: true
+# TODO: enable parallel pull
+  kubeControllerManager:
+    horizontalPodAutoscalerUseRestClients: true
+  masterPublicName: api.4f56f.k8s.local
+  networkCIDR: 172.20.0.0/16
+  networking:
+    kubenet: {}
+  nonMasqueradeCIDR: 100.64.0.0/10
+  sshAccess:
+  - 0.0.0.0/0
+  subnets:
+  - cidr: 172.20.32.0/19
+    name: us-west-2a  # the subnet needs to be the name of the availability zone and not the region; default to zone "a"
+    type: Public
+    zone: us-west-2a
+  topology:
+    dns:
+      type: Public
+    masters: public
+    nodes: public
+
+---
+
+apiVersion: kops/v1alpha2
+kind: InstanceGroup
+metadata:
+  creationTimestamp: 2018-04-22T23:01:46Z
+  labels:
+    kops.k8s.io/cluster: 4f56f.k8s.local
+  name: master-us-west-2
+spec:
+#  image: 238764668013/k8s-worker
+  image: kope.io/k8s-1.10-debian-jessie-amd64-hvm-ebs-2018-08-17
+  machineType: m4.2xlarge
+  maxSize: 1
+  minSize: 1
+  nodeLabels:
+    kops.k8s.io/instancegroup: master-us-west-2
+  role: Master
+  subnets:
+  - us-west-2a
+
+#---
+#
+#apiVersion: kops/v1alpha2
+#kind: InstanceGroup
+#metadata:
+#  creationTimestamp: 2018-04-22T23:01:46Z
+#  labels:
+#    kops.k8s.io/cluster: 4f56f.k8s.local
+#  name: nodes.m4.2xlarge.prom
+#spec:
+#  image: 238764668013/k8s-worker
+#  machineType: m4.2xlarge
+#  maxSize: 1
+#  minSize: 1
+#  tenancy: dedicated
+#  nodeLabels:
+#    kops.k8s.io/instancegroup: nodes.m4.2xlarge.prom
+#  role: Node
+#  subnets:
+#  - us-west-2a
+
+---
+
+apiVersion: kops/v1alpha2
+kind: InstanceGroup
+metadata:
+  creationTimestamp: '2019-11-02T20:14:59Z'
+  labels:
+    kops.k8s.io/cluster: 4f56f.k8s.local
+  name: nodes.c4.xlarge
+spec:
+  image: kope.io/k8s-1.10-debian-jessie-amd64-hvm-ebs-2018-08-17
+  machineType: c4.xlarge
+  maxSize: 5
+  minSize: 5
+  nodeLabels:
+    kops.k8s.io/instancegroup: nodes.c4.xlarge
+  role: Node
+  rootVolumeSize: 64
+  rootVolumeType: gp2
+  subnets:
+  - us-west-2a

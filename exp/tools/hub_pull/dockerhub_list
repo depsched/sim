@@ -1,0 +1,83 @@
+#!/usr/bin/python
+
+from __future__ import print_function
+
+import sys
+import subprocess
+import os
+import os.path
+import re
+import argparse
+
+HUB_URL = 'https://hub.docker.com/explore/?page='
+NUM_PAGE = 2 # the images are sorted by the number of pulls
+DUMP_DIR = './.tmp/'
+GREP_CMD = "grep -o 'RepositoryListItem__repoName___[^<]*' | grep -oP '(?<=\>).*'"
+
+def grab_dump():
+    for page in range(NUM_PAGE):
+        clean_dir()
+        run_cmd('wget -q -P ' + DUMP_DIR + ' ' + HUB_URL + str(page+1))
+        run_cmd('cat ' + DUMP_DIR + '* | ' + GREP_CMD)
+
+    clean_dir()
+
+def clean_dir():
+    run_cmd('rm -rf ' + DUMP_DIR)
+
+def run_cmd(cmd):
+    proc = subprocess.Popen(cmd, shell=True)
+
+    proc.communicate()
+
+    if proc.returncode:
+        print('Error occured running host command: %s' % cmd, file=sys.stderr)
+        sys.exit(proc.returncode)
+
+def shell_quote(cmd):
+    return "'" + cmd.replace("'", "'\\''") + "'"
+
+def print_usage(parser):
+    parser.print_help(file=sys.stderr)
+    sys.exit(2)
+
+def arg_test():
+    print('halo.')
+
+def main():
+    #os.chdir()
+
+    parser = argparse.ArgumentParser(description='pull the list of top 3 pages of dockerhub explore page')
+    cmds = {
+            'grab': grab_dump,
+            'argtest': arg_test,
+            'help': lambda: print_usage(parser),
+            }
+    cmdlist = sorted(cmds.keys())
+
+    parser.add_argument(
+            'action',
+            metavar='action',
+            nargs='?',
+            default='grab',
+            choices=cmdlist,
+            help='Action is one of ' + ', '.join(cmdlist))
+
+    parser.add_argument('-v', '--verbose', action='store_true',
+                            help='pass verbose flag to build inside container')
+
+    parser.add_argument('numpages', type=int,
+                            help='number of pages need to grab')
+
+    args = parser.parse_args()
+
+    if args.numpages is not None:
+        global NUM_PAGE
+        NUM_PAGE = args.numpages
+
+    cmds[args.action]()
+
+if __name__ == '__main__':
+    main()
+
+

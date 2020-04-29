@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import sys
+import subprocess
+import os
+import os.path
+import re
+import argparse
+import time
+
+LIST_FILE = "./ecr_image_list.csv"
+IMAGE_STATS_FILE = "./image_stats.csv"
+LAYER_STATS_FILE = "./layer_stats.csv"
+
+def run_pop_test():
+    '''
+    Input: IMAGE_STATS_FILE, LAYER_STATS_FILE
+    Output: results with different cache size
+    '''
+    
+    with open(IMAGE_STATS_FILE, 'r') as f:
+        image_list = [line.rstrip() for line in f.readlines()]
+
+def run_share_test():
+    with open(LIST_FILE, 'r') as f:
+        image_list = [line.rstrip() for line in f.readlines()]
+
+    run_cmd("sudo docker rmi $(sudo docker images -q) -f || true")
+
+    # run tests in order of min5, min10...to avoid repulling image
+    print("--> start zero-cache pulling")
+    metric_per_pull(image_list, "./out_zero_metric.csv")
+
+    print("--> start min5 pulling")
+    skip_set = prepare_cache("./min5_image_set.csv")
+    metric_per_pull(image_list, "./out_min5_metric.csv", skip_set)
+
+    print("--> start min10 pulling")
+    skip_set = prepare_cache("./min10_image_set.csv")
+    metric_per_pull(image_list, "./out_min10_metric.csv", skip_set)
+
+    print("--> start min25 pulling")
+    skip_set = prepare_cache("./min25_image_set.csv")
+    metric_per_pull(image_list, "./out_min25_metric.csv", skip_set)
+            
+    print("--> start full-cache pulling")
+    prepare_cache(LIST_FILE)
+    metric_per_pull(image_list, "./out_full_metric.csv")
+
+def prepare_cache(image_file):
+    skip_set = set()
+    with open(image_file, 'r') as f:
+        for image in f.readlines():
+            image = image.split(',')[0].rstrip()
+            skip_set.add(image)
+            run_cmd("sudo docker pull " + image) 
+    return skip_set
+
+def metric_per_pull(image_list, outfile, skip_set=set()):
+    """
+    Pull a docker image, collect metrics, write to out file (image_name, latency).
+    """
+
+    metric_list = []
+    for img in image_list:
+        img = img.split(',')[0].rstrip()
+
+        # latency measurement
+        start_time = time.time()
+        run_cmd("sudo docker pull " + img + " || true")
+        latency = time.time() - start_time
+        
+        metric_list.append([img, str(latency)]) 
+       
+        if img not in skip_set: 
+            run_cmd("sudo docker rmi " + img + " || true")         
+
+    open(outfile, 'w').close()
+    with open(outfile, "a") as f:
+        for m in metric_list:
+            f.write(','.join(m) + '\n')
+
+def run_cmd_out(cmd):
+    proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+
+    out, _ = proc.communicate()
+
+    if proc.returncode:
+        print('Error occured running host command: %s' % cmd, file=sys.stderr)
+        sys.exit(proc.returncode)
+
+    return out
+    
+def run_cmd(cmd):
+    proc = subprocess.Popen(cmd, shell=True)
+
+    proc.communicate()
+
+    if proc.returncode:
+        print('Error occured running host command: %s' % cmd, file=sys.stderr)
+        sys.exit(proc.returncode)
+
+def check_root():
+    euid = os.geteuid()
+    if euid != 0:
+        print('--> Please run the script as root...')
+        exit()
+
+def main():
+    check_root()
+    #run_share_test() 
+    run_pop_test()
+
+
+if __name__ == '__main__':
+    main()
+    print('Done')

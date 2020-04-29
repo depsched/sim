@@ -1,0 +1,6 @@
+*.pyc
+build/
+dist/
+pywren.egg-info
+.idea/
+/.git-files-list
